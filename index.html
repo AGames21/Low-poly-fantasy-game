@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>KNIGHTFALL</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>&#9876;</text></svg>" />
+  <style>
+    :root {
+      --gold: #d8b84a;
+      --gold-dim: #8a7430;
+      --parchment: #e8dcb8;
+      --panel: rgba(10, 8, 22, 0.92);
+      --panel-edge: #3a2f5c;
+      --green: #35e06a;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #050408;
+      font-family: Georgia, 'Times New Roman', serif;
+      color: var(--parchment);
+      -webkit-user-select: none; user-select: none;
+      touch-action: none;
+    }
+    #game-canvas {
+      position: fixed; inset: 0;
+      width: 100%; height: 100%;
+      display: block;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    /* ---------- shared UI bits ---------- */
+    .panel {
+      background: var(--panel);
+      border: 2px solid var(--panel-edge);
+      outline: 2px solid #0a0814;
+      box-shadow: 0 0 24px rgba(53, 224, 106, 0.12), inset 0 0 32px rgba(0,0,0,0.6);
+    }
+    .btn {
+      display: inline-block;
+      font-family: inherit;
+      font-size: 18px;
+      letter-spacing: 2px;
+      color: var(--gold);
+      background: linear-gradient(#1c1636, #0e0b20);
+      border: 2px solid var(--gold-dim);
+      outline: 2px solid #0a0814;
+      padding: 12px 28px;
+      cursor: pointer;
+      text-transform: uppercase;
+    }
+    .btn:hover, .btn.selected {
+      color: #0a0814;
+      background: var(--gold);
+      border-color: var(--parchment);
+    }
+
+    /* ---------- launch screen ---------- */
+    #launch {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 18px;
+      background:
+        radial-gradient(ellipse at 50% 120%, rgba(30, 10, 60, 0.85), transparent 60%),
+        radial-gradient(ellipse at 50% -20%, rgba(10, 80, 35, 0.55), transparent 65%),
+        #050408;
+      z-index: 40;
+      text-align: center;
+      padding: 24px;
+    }
+    #launch h1 {
+      font-size: clamp(42px, 9vw, 84px);
+      letter-spacing: 10px;
+      color: var(--gold);
+      text-shadow: 0 0 18px rgba(53, 224, 106, 0.55), 3px 3px 0 #000;
+      font-weight: normal;
+    }
+    #launch .subtitle {
+      font-style: italic;
+      color: #9fd8ae;
+      letter-spacing: 3px;
+      margin-bottom: 22px;
+      text-shadow: 2px 2px 0 #000;
+    }
+    #launch .prompt {
+      font-size: 15px;
+      letter-spacing: 2px;
+      color: var(--parchment);
+      opacity: 0.85;
+      margin-bottom: 4px;
+    }
+    #launch .choices { display: flex; gap: 18px; flex-wrap: wrap; justify-content: center; }
+    #launch .hint { font-size: 12px; opacity: 0.5; margin-top: 18px; font-style: italic; }
+
+    /* ---------- HUD ---------- */
+    #hud {
+      position: fixed; inset: 0;
+      pointer-events: none;
+      z-index: 20;
+      display: none;
+    }
+    #hud .title {
+      position: absolute; top: 12px; left: 16px;
+      font-size: 20px; letter-spacing: 6px; color: var(--gold);
+      text-shadow: 0 0 10px rgba(53,224,106,0.4), 2px 2px 0 #000;
+    }
+    #controls-hint {
+      position: absolute; bottom: 10px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 12px; letter-spacing: 1px;
+      color: var(--parchment); opacity: 0.55;
+      text-shadow: 1px 1px 0 #000;
+      white-space: nowrap;
+    }
+    #customize-btn {
+      position: absolute; top: 10px; right: 12px;
+      pointer-events: auto;
+      font-size: 14px; padding: 8px 16px;
+    }
+
+    /* ---------- customize panel ---------- */
+    #customize {
+      position: fixed;
+      top: 50%; right: 12px;
+      transform: translateY(-50%);
+      width: min(320px, calc(100vw - 24px));
+      max-height: calc(100vh - 90px);
+      overflow-y: auto;
+      z-index: 30;
+      padding: 16px;
+      display: none;
+    }
+    #customize h2 {
+      font-size: 18px; letter-spacing: 4px; color: var(--gold);
+      text-align: center; margin-bottom: 4px; font-weight: normal;
+      text-transform: uppercase;
+    }
+    #customize .divider {
+      height: 2px; margin: 8px 0 12px;
+      background: linear-gradient(90deg, transparent, var(--gold-dim), transparent);
+    }
+    #customize .group { margin-bottom: 14px; }
+    #customize .group-label {
+      font-size: 12px; letter-spacing: 3px; text-transform: uppercase;
+      color: #9fd8ae; margin-bottom: 6px;
+    }
+    #customize .options { display: flex; flex-wrap: wrap; gap: 6px; }
+    #customize .opt {
+      font-family: inherit;
+      font-size: 13px;
+      color: var(--parchment);
+      background: #14102a;
+      border: 2px solid var(--panel-edge);
+      padding: 6px 10px;
+      cursor: pointer;
+    }
+    #customize .opt:hover { border-color: var(--gold-dim); }
+    #customize .opt.selected {
+      color: #0a0814; background: var(--gold);
+      border-color: var(--parchment);
+    }
+    #customize .swatch {
+      width: 34px; height: 34px; padding: 0;
+      border: 2px solid var(--panel-edge);
+      cursor: pointer;
+    }
+    #customize .swatch.selected { border-color: var(--parchment); outline: 2px solid var(--gold); }
+    #customize .footnote {
+      font-size: 11px; font-style: italic; opacity: 0.5; text-align: center; margin-top: 4px;
+    }
+
+    /* ---------- touch controls ---------- */
+    #touch-ui { position: fixed; inset: 0; z-index: 25; pointer-events: none; display: none; }
+    #joystick {
+      position: absolute; left: 26px; bottom: 30px;
+      width: 128px; height: 128px;
+      border-radius: 50%;
+      border: 2px solid rgba(216, 184, 74, 0.5);
+      background: radial-gradient(circle, rgba(20,16,42,0.55), rgba(10,8,20,0.75));
+      pointer-events: auto;
+    }
+    #joystick-knob {
+      position: absolute; left: 50%; top: 50%;
+      width: 54px; height: 54px;
+      margin: -27px 0 0 -27px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 30%, #d8b84a, #6e5c26);
+      border: 2px solid #0a0814;
+      box-shadow: 0 3px 8px rgba(0,0,0,0.7);
+    }
+    #jump-btn {
+      position: absolute; right: 30px; bottom: 44px;
+      width: 84px; height: 84px;
+      border-radius: 50%;
+      border: 2px solid rgba(216, 184, 74, 0.6);
+      background: radial-gradient(circle at 35% 30%, rgba(53,224,106,0.35), rgba(10,30,16,0.8));
+      color: var(--gold);
+      font-family: inherit; font-size: 14px; letter-spacing: 2px;
+      pointer-events: auto;
+      text-shadow: 1px 1px 0 #000;
+    }
+    #jump-btn:active { background: radial-gradient(circle at 35% 30%, rgba(53,224,106,0.7), rgba(20,60,32,0.9)); }
+  </style>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <div id="launch">
+    <h1>KNIGHTFALL</h1>
+    <div class="subtitle">~ a low poly dark fantasy ~</div>
+    <div class="prompt">How art thou playing?</div>
+    <div class="choices">
+      <button class="btn" id="choose-pc">&#9876; PC</button>
+      <button class="btn" id="choose-mobile">&#9822; Mobile</button>
+    </div>
+    <div class="hint">Thy choice is remembered, and may be changed from the customize menu.</div>
+  </div>
+
+  <div id="hud">
+    <div class="title">KNIGHTFALL</div>
+    <button class="btn" id="customize-btn">Customize</button>
+    <div id="controls-hint"></div>
+  </div>
+
+  <div id="customize" class="panel">
+    <h2>The Armory</h2>
+    <div class="divider"></div>
+    <div class="group">
+      <div class="group-label">Helmet</div>
+      <div class="options" data-group="helmet"></div>
+    </div>
+    <div class="group">
+      <div class="group-label">Armor</div>
+      <div class="options" data-group="material"></div>
+    </div>
+    <div class="group">
+      <div class="group-label">Tint</div>
+      <div class="options" data-group="tint"></div>
+    </div>
+    <div class="group">
+      <div class="group-label">Weapon &amp; Gear</div>
+      <div class="options" data-group="weapon"></div>
+    </div>
+    <div class="group">
+      <div class="group-label">Controls</div>
+      <div class="options" data-group="platform"></div>
+    </div>
+    <div class="footnote">Choices are saved to this device.</div>
+  </div>
+
+  <div id="touch-ui">
+    <div id="joystick"><div id="joystick-knob"></div></div>
+    <button id="jump-btn">JUMP</button>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
