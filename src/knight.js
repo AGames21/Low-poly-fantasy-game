@@ -79,12 +79,25 @@ function makeArmorMaterial(preset, tintHex) {
   return mat;
 }
 
+const ATTACK_DURATION = 0.5;
+const LAND_DURATION = 0.22;
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+function smooth01(edge0, edge1, x) {
+  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+function easeIn(t) { return t * t; }
+function easeOut(t) { return 1 - (1 - t) * (1 - t); }
+
 export function createKnight(initialConfig = DEFAULT_CONFIG) {
   const group = new THREE.Group(); // world transform, owned by main.js
   let model = null;
   let joints = null;
   let config = { ...DEFAULT_CONFIG, ...initialConfig };
   let walkPhase = 0;
+  let attackT = 0;
+  let landT = 0;
 
   function applyConfig(next) {
     config = { ...config, ...next };
@@ -102,29 +115,38 @@ export function createKnight(initialConfig = DEFAULT_CONFIG) {
     group.add(model);
   }
 
-  function update(dt, { speed = 0, grounded = true } = {}) {
+  function update(dt, { speed = 0, grounded = true, vy = 0 } = {}) {
     if (!joints) return;
-    const moving = speed > 0.1;
-    if (moving) walkPhase += dt * speed * 3.4;
+    if (attackT > 0) attackT = Math.max(0, attackT - dt);
+    if (landT > 0) landT = Math.max(0, landT - dt);
     const t = performance.now() / 1000;
+    const moving = speed > 0.1;
 
-    const legSwing = moving ? Math.sin(walkPhase) * 0.65 : 0;
-    const armSwing = moving ? Math.sin(walkPhase) * 0.45 : 0;
+    // 0 = walk gait, 1 = run gait — blended by actual speed
+    const run = smooth01(2.4, 4.4, speed);
+    if (moving) walkPhase += dt * speed * lerp(3.4, 2.3, run);
+
     const idle = Math.sin(t * 1.6) * 0.03;
+    const legAmp = lerp(0.6, 1.0, run);
+    const armAmp = lerp(0.45, 0.95, run);
+    const legSwing = moving ? Math.sin(walkPhase) * legAmp : 0;
+    const armSwing = moving ? Math.sin(walkPhase) * armAmp : 0;
 
+    // ---- legs ----
     joints.hipL.rotation.x = legSwing;
     joints.hipR.rotation.x = -legSwing;
-    joints.kneeL.rotation.x = moving ? Math.max(0, -Math.sin(walkPhase - 0.6)) * 0.7 : 0;
-    joints.kneeR.rotation.x = moving ? Math.max(0, Math.sin(walkPhase - 0.6)) * 0.7 : 0;
+    const kneeAmp = lerp(0.7, 1.3, run);
+    joints.kneeL.rotation.x = moving ? Math.max(0, -Math.sin(walkPhase - 0.55)) * kneeAmp : 0;
+    joints.kneeR.rotation.x = moving ? Math.max(0, Math.sin(walkPhase - 0.55)) * kneeAmp : 0;
 
-    if (!grounded) {
-      // simple jump pose: legs tucked, arms slightly out
-      joints.hipL.rotation.x = 0.5;
-      joints.hipR.rotation.x = 0.4;
-      joints.kneeL.rotation.x = 0.9;
-      joints.kneeR.rotation.x = 0.8;
-    }
+    // ---- torso: forward lean, bounce, counter-twist when running ----
+    joints.root.rotation.x = moving ? run * 0.2 : 0;
+    joints.torso.position.y = joints.torsoBaseY +
+      (moving ? Math.abs(Math.sin(walkPhase)) * lerp(0.05, 0.11, run) : idle * 0.4);
+    joints.torso.rotation.z = moving ? Math.sin(walkPhase) * lerp(0.045, 0.07, run) : idle * 0.3;
+    joints.torso.rotation.y = moving ? Math.sin(walkPhase) * -0.14 * run : 0;
 
+    // ---- arms ----
     if (config.weapon === 'book') {
       // both hands hold the tome in front of the chest, head tilted to read
       joints.shoulderL.rotation.set(-1.05, 0.35, 0.15);
@@ -133,17 +155,91 @@ export function createKnight(initialConfig = DEFAULT_CONFIG) {
       joints.elbowR.rotation.x = -0.85;
       joints.head.rotation.x = 0.35 + idle * 0.5;
     } else {
+      // running pumps bent arms; walking swings looser ones
+      const elbowBend = lerp(0.25, 1.15, run * (moving ? 1 : 0));
       joints.shoulderL.rotation.set(-armSwing, 0, 0.12 + (moving ? 0 : idle));
-      joints.elbowL.rotation.x = -0.25 - (moving ? Math.max(0, armSwing) * 0.4 : 0);
+      joints.elbowL.rotation.x = -elbowBend - (moving ? Math.max(0, armSwing) * 0.3 : 0);
       const holding = config.weapon !== 'none';
-      joints.shoulderR.rotation.set(holding ? armSwing * 0.4 - 0.15 : armSwing, 0, -0.12 - (moving ? 0 : idle));
-      joints.elbowR.rotation.x = holding ? -0.5 : -0.25 - (moving ? Math.max(0, -armSwing) * 0.4 : 0);
+      joints.shoulderR.rotation.set(
+        holding ? armSwing * lerp(0.4, 0.8, run) - 0.15 : armSwing, 0,
+        -0.12 - (moving ? 0 : idle)
+      );
+      joints.elbowR.rotation.x = holding ? -Math.max(0.5, elbowBend) : -elbowBend - (moving ? Math.max(0, -armSwing) * 0.3 : 0);
       joints.head.rotation.x = idle * 0.4;
     }
 
-    // torso bob + sway
-    joints.torso.position.y = joints.torsoBaseY + (moving ? Math.abs(Math.sin(walkPhase)) * 0.05 : idle * 0.4);
-    joints.torso.rotation.z = moving ? Math.sin(walkPhase) * 0.045 : idle * 0.3;
+    // ---- airborne: tuck while rising, spread-and-brace while falling ----
+    if (!grounded) {
+      const rise = Math.min(1, Math.max(-1, vy / 7));
+      const tuck = Math.max(0, rise);
+      const fall = Math.max(0, -rise);
+      joints.hipL.rotation.x = 0.95 * tuck + 0.35 * fall;
+      joints.kneeL.rotation.x = 1.3 * tuck + 0.45 * fall;
+      joints.hipR.rotation.x = -0.35 * tuck + 0.3 * fall;
+      joints.kneeR.rotation.x = 0.5 * tuck + 0.45 * fall;
+      joints.shoulderL.rotation.x = -0.45 * tuck - 0.2 * fall;
+      joints.shoulderL.rotation.z = 0.15 + 0.25 * tuck + 0.6 * fall;
+      joints.shoulderR.rotation.x = -0.45 * tuck - 0.2 * fall;
+      joints.shoulderR.rotation.z = -0.15 - 0.25 * tuck - 0.6 * fall;
+      joints.root.rotation.x = 0.16 * tuck;
+      joints.torso.rotation.y = 0;
+    }
+
+    // ---- landing squash ----
+    if (grounded && landT > 0) {
+      const k = landT / LAND_DURATION;
+      joints.kneeL.rotation.x += 0.85 * k;
+      joints.kneeR.rotation.x += 0.85 * k;
+      joints.hipL.rotation.x += 0.4 * k;
+      joints.hipR.rotation.x += 0.4 * k;
+      joints.torso.position.y -= 0.16 * k;
+      joints.root.rotation.x += 0.12 * k;
+    }
+
+    // ---- attack: windup → strike → recover, layered over everything ----
+    if (attackT > 0) {
+      const p = 1 - attackT / ATTACK_DURATION;
+      let armX, armZ, elbow, twist;
+      if (p < 0.35) {
+        const k = easeOut(p / 0.35); // raise the sword up behind
+        armX = lerp(-0.15, -2.3, k);
+        armZ = lerp(-0.12, -0.4, k);
+        elbow = lerp(-0.5, -0.9, k);
+        twist = lerp(0, 0.4, k);
+      } else if (p < 0.6) {
+        const k = easeIn((p - 0.35) / 0.25); // whip it down and across
+        armX = lerp(-2.3, 0.75, k);
+        armZ = lerp(-0.4, 0.05, k);
+        elbow = lerp(-0.9, -0.15, k);
+        twist = lerp(0.4, -0.45, k);
+      } else {
+        const k = smooth01(0, 1, (p - 0.6) / 0.4); // settle back to guard
+        armX = lerp(0.75, -0.15, k);
+        armZ = lerp(0.05, -0.12, k);
+        elbow = lerp(-0.15, -0.5, k);
+        twist = lerp(-0.45, 0, k);
+      }
+      joints.shoulderR.rotation.set(armX, 0, armZ);
+      joints.elbowR.rotation.x = elbow;
+      joints.torso.rotation.y = twist;
+    }
+  }
+
+  function attack() {
+    if (attackT > 0) return false;
+    attackT = ATTACK_DURATION;
+    return true;
+  }
+
+  // true during the part of the swing where the blade is actually sweeping
+  function attackHitActive() {
+    if (attackT <= 0) return false;
+    const p = 1 - attackT / ATTACK_DURATION;
+    return p >= 0.35 && p <= 0.62;
+  }
+
+  function land() {
+    landT = LAND_DURATION;
   }
 
   applyConfig(config);
@@ -151,6 +247,10 @@ export function createKnight(initialConfig = DEFAULT_CONFIG) {
     group,
     applyConfig,
     update,
+    attack,
+    attackHitActive,
+    isAttacking: () => attackT > 0,
+    land,
     getConfig: () => ({ ...config }),
   };
 }
@@ -279,6 +379,7 @@ function buildModel(config) {
   attachGear(config.weapon, armL, armR, armorFlat, clothDark);
 
   const joints = {
+    root: model,
     torso,
     torsoBaseY,
     head,

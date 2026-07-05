@@ -108,6 +108,38 @@
       font-size: 20px; letter-spacing: 6px; color: var(--gold);
       text-shadow: 0 0 10px rgba(53,224,106,0.4), 2px 2px 0 #000;
     }
+    #stats {
+      position: absolute; top: 12px; left: 50%;
+      transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+      text-shadow: 2px 2px 0 #000;
+    }
+    #hearts { font-size: 20px; letter-spacing: 3px; }
+    #hearts .full { color: #e03a3a; }
+    #hearts .empty { color: #3a2430; }
+    #objective {
+      font-size: 13px; letter-spacing: 2px; color: #9fd8ae;
+      font-style: italic;
+    }
+    #damage-flash {
+      position: fixed; inset: 0;
+      background: radial-gradient(ellipse at center, transparent 40%, rgba(200, 20, 20, 0.55));
+      opacity: 0; transition: opacity 0.4s;
+      pointer-events: none; z-index: 35;
+    }
+    #death-screen {
+      position: fixed; inset: 0;
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: rgba(10, 2, 4, 0.82);
+      z-index: 38; text-align: center;
+    }
+    #death-screen h2 {
+      font-size: clamp(34px, 7vw, 60px); font-weight: normal;
+      color: #c02828; letter-spacing: 8px;
+      text-shadow: 0 0 22px rgba(192, 40, 40, 0.6), 3px 3px 0 #000;
+    }
+    #death-screen p { margin-top: 10px; color: var(--parchment); opacity: 0.7; font-style: italic; }
     #controls-hint {
       position: absolute; bottom: 10px; left: 50%;
       transform: translateX(-50%);
@@ -204,6 +236,18 @@
       text-shadow: 1px 1px 0 #000;
     }
     #jump-btn:active { background: radial-gradient(circle at 35% 30%, rgba(53,224,106,0.7), rgba(20,60,32,0.9)); }
+    #attack-btn {
+      position: absolute; right: 44px; bottom: 148px;
+      width: 92px; height: 92px;
+      border-radius: 50%;
+      border: 2px solid rgba(216, 184, 74, 0.7);
+      background: radial-gradient(circle at 35% 30%, rgba(224, 58, 58, 0.4), rgba(60, 14, 14, 0.85));
+      color: var(--gold);
+      font-family: inherit; font-size: 30px;
+      pointer-events: auto;
+      text-shadow: 1px 1px 0 #000;
+    }
+    #attack-btn:active { background: radial-gradient(circle at 35% 30%, rgba(224, 58, 58, 0.8), rgba(90, 20, 20, 0.95)); }
   </style>
 </head>
 <body>
@@ -222,8 +266,18 @@
 
   <div id="hud">
     <div class="title">KNIGHTFALL</div>
+    <div id="stats">
+      <div id="hearts"></div>
+      <div id="objective"></div>
+    </div>
     <button class="btn" id="customize-btn">Customize</button>
     <div id="controls-hint"></div>
+  </div>
+
+  <div id="damage-flash"></div>
+  <div id="death-screen">
+    <h2>THOU ART SLAIN</h2>
+    <p>The wraiths carry thee back to the gates&hellip;</p>
   </div>
 
   <div id="customize" class="panel">
@@ -254,6 +308,7 @@
 
   <div id="touch-ui">
     <div id="joystick"><div id="joystick-knob"></div></div>
+    <button id="attack-btn">&#9876;</button>
     <button id="jump-btn">JUMP</button>
   </div>
 

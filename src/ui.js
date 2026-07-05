@@ -54,8 +54,8 @@ export function createUI({ onStart, onConfigChange, onPlatformChange }) {
   function applyPlatform() {
     touchUI.style.display = platform === 'mobile' ? 'block' : 'none';
     hint.textContent = platform === 'mobile'
-      ? 'joystick to move · touch-drag to look · tap Customize up top'
-      : 'WASD move · SPACE jump · drag mouse to look · scroll to zoom · C to customize';
+      ? 'joystick to move · ⚔ attack · touch-drag to look'
+      : 'WASD move · CLICK or F attack · SPACE jump · drag to look · C to customize';
     onPlatformChange(platform);
   }
 

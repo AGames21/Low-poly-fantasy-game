@@ -3,6 +3,7 @@ import { createRetroRenderer, snapAll } from './retro.js';
 import { createSky } from './sky.js';
 import { createWorld, WORLD_BOUNDS, heightAt } from './world.js';
 import { createKnight } from './knight.js';
+import { createEnemies } from './enemies.js';
 import { createControls } from './controls.js';
 import { createUI, loadConfig } from './ui.js';
 
@@ -21,6 +22,7 @@ const knight = createKnight(loadConfig());
 knight.group.position.set(0, 0, 4);
 scene.add(knight.group);
 
+const enemies = createEnemies(scene);
 const controls = createControls(canvas);
 
 // ---------- camera rig ----------
@@ -32,16 +34,64 @@ const cam = {
 };
 
 // ---------- player state ----------
+const MAX_HP = 5;
+const OBJECTIVE_KILLS = 5;
 const player = {
   pos: knight.group.position,
   heading: Math.PI, // facing -z (toward castle)
   vy: 0,
   grounded: true,
   speed: 0,
+  hp: MAX_HP,
+  invulnT: 0,
+  kills: 0,
+  deadT: 0,
 };
 const WALK_SPEED = 5.2;
 const GRAVITY = 22;
 const JUMP_VELOCITY = 8;
+let swingConnected = true; // current sword swing already hit something
+
+// ---------- combat/status HUD ----------
+const heartsEl = document.getElementById('hearts');
+const objectiveEl = document.getElementById('objective');
+const damageFlashEl = document.getElementById('damage-flash');
+const deathScreenEl = document.getElementById('death-screen');
+
+function updateHUD() {
+  heartsEl.innerHTML =
+    '<span class="full">' + '♥'.repeat(player.hp) + '</span>' +
+    '<span class="empty">' + '♥'.repeat(MAX_HP - player.hp) + '</span>';
+  objectiveEl.textContent = player.kills >= OBJECTIVE_KILLS
+    ? 'The grounds are cleansed… for now.'
+    : `Slay ${OBJECTIVE_KILLS} wraiths — ${player.kills}/${OBJECTIVE_KILLS}`;
+}
+updateHUD();
+
+function hurtPlayer() {
+  if (player.invulnT > 0 || player.deadT > 0) return;
+  player.hp--;
+  player.invulnT = 1.2;
+  updateHUD();
+  damageFlashEl.style.opacity = '1';
+  setTimeout(() => { damageFlashEl.style.opacity = '0'; }, 180);
+  if (player.hp <= 0) {
+    player.deadT = 2.2;
+    deathScreenEl.style.display = 'flex';
+  }
+}
+
+function respawnPlayer() {
+  player.pos.set(0, 0, 4);
+  player.heading = Math.PI;
+  player.vy = 0;
+  player.grounded = true;
+  player.hp = MAX_HP;
+  player.invulnT = 2;
+  cam.yaw = 0;
+  deathScreenEl.style.display = 'none';
+  updateHUD();
+}
 
 let started = false;
 createUI({
@@ -62,7 +112,7 @@ const clock = new THREE.Clock();
 const tmpDir = new THREE.Vector3();
 
 // exposed for automated end-to-end tests
-window.__knight = { player, cam };
+window.__knight = { player, cam, enemies, knight };
 
 function tick() {
   requestAnimationFrame(tick);
@@ -71,9 +121,16 @@ function tick() {
 
   sky.update(time);
 
-  const input = started
+  const input = started && player.deadT <= 0
     ? controls.poll()
-    : { move: { x: 0, y: 0 }, lookDX: 0, lookDY: 0, zoomDelta: 0, jump: false };
+    : { move: { x: 0, y: 0 }, lookDX: 0, lookDY: 0, zoomDelta: 0, jump: false, attack: false };
+
+  // death / respawn
+  if (player.deadT > 0) {
+    player.deadT -= dt;
+    if (player.deadT <= 0) respawnPlayer();
+  }
+  if (player.invulnT > 0) player.invulnT -= dt;
 
   // camera orbit
   cam.yaw -= input.lookDX * 0.005;
@@ -119,11 +176,34 @@ function tick() {
       player.pos.y = groundY;
       player.vy = 0;
       player.grounded = true;
+      knight.land();
     }
   }
 
+  // ---- combat ----
+  if (input.attack && knight.attack()) {
+    swingConnected = false;
+  }
+  if (!swingConnected && knight.attackHitActive()) {
+    tmpDir.set(Math.sin(player.heading), 0, Math.cos(player.heading));
+    const result = enemies.applyHit(player.pos, tmpDir);
+    if (result.hits > 0) {
+      swingConnected = true;
+      if (result.kills > 0) {
+        player.kills += result.kills;
+        updateHUD();
+      }
+    }
+  }
+  if (started) {
+    const clawHits = enemies.update(dt, player.pos, time);
+    if (clawHits > 0) hurtPlayer();
+  }
+  // flicker while invulnerable so the hit reads
+  knight.group.visible = player.invulnT <= 0 || Math.floor(time * 12) % 2 === 0;
+
   knight.group.rotation.y = player.heading;
-  knight.update(dt, { speed: player.speed, grounded: player.grounded });
+  knight.update(dt, { speed: player.speed, grounded: player.grounded, vy: player.vy });
 
   // follow camera with a little lag
   cam.target.lerp(

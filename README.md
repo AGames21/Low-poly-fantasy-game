@@ -23,9 +23,17 @@ npm run dev
 Open the printed URL (default `http://localhost:5173`). Pick **PC** or
 **Mobile** on the title screen.
 
-- **PC:** WASD / arrows to move, Space to jump, drag mouse to look, scroll to
-  zoom, `C` for the customize menu.
-- **Mobile:** on-screen joystick to move, Jump button, touch-drag to look.
+- **PC:** WASD / arrows to move, click or `F` to attack, Space to jump, drag
+  mouse to look, scroll to zoom, `C` for the customize menu.
+- **Mobile:** on-screen joystick to move, ⚔ button (or tap) to attack, Jump
+  button, touch-drag to look.
+
+## The demo
+
+Training dummies wait by the path, and wraiths haunt the grounds — slay 5 to
+cleanse them. Wraiths claw back: you have 5 hearts, and falling means waking
+up back at the gates. Walking blends into a distinct run cycle at speed, and
+jumps have proper tuck/fall/landing phases.
 
 ## Customize your knight
 

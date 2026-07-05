@@ -7,6 +7,7 @@ export function createControls(canvas) {
     lookDY: 0,
     zoomDelta: 0,
     jumpQueued: false,
+    attackQueued: false,
   };
 
   // ---------- keyboard ----------
@@ -18,16 +19,29 @@ export function createControls(canvas) {
       state.jumpQueued = true;
       e.preventDefault();
     }
+    if (e.code === 'KeyF') state.attackQueued = true;
   });
   window.addEventListener('keyup', (e) => keys.delete(e.code));
   window.addEventListener('blur', () => keys.clear());
 
-  // ---------- mouse look ----------
+  // ---------- mouse: drag = look, quick click = attack ----------
   let dragging = false;
-  canvas.addEventListener('mousedown', () => { dragging = true; });
-  window.addEventListener('mouseup', () => { dragging = false; });
+  let dragDist = 0;
+  let downTime = 0;
+  canvas.addEventListener('mousedown', () => {
+    dragging = true;
+    dragDist = 0;
+    downTime = performance.now();
+  });
+  window.addEventListener('mouseup', () => {
+    if (dragging && dragDist < 8 && performance.now() - downTime < 350) {
+      state.attackQueued = true;
+    }
+    dragging = false;
+  });
   window.addEventListener('mousemove', (e) => {
     if (!dragging) return;
+    dragDist += Math.abs(e.movementX) + Math.abs(e.movementY);
     state.lookDX += e.movementX;
     state.lookDY += e.movementY;
   });
@@ -82,21 +96,35 @@ export function createControls(canvas) {
     state.jumpQueued = true;
     e.preventDefault();
   });
+  const attackBtn = document.getElementById('attack-btn');
+  attackBtn.addEventListener('pointerdown', (e) => {
+    state.attackQueued = true;
+    e.preventDefault();
+  });
 
-  // any touch on the canvas itself orbits the camera
+  // touch on the canvas: drag orbits the camera, a quick tap attacks
+  let touchDragDist = 0;
+  let touchDownTime = 0;
   canvas.addEventListener('pointerdown', (e) => {
     if (e.pointerType !== 'touch' || lookPointer !== null) return;
     lookPointer = e.pointerId;
     lastLook = { x: e.clientX, y: e.clientY };
+    touchDragDist = 0;
+    touchDownTime = performance.now();
   });
   canvas.addEventListener('pointermove', (e) => {
     if (e.pointerId !== lookPointer) return;
+    touchDragDist += Math.abs(e.clientX - lastLook.x) + Math.abs(e.clientY - lastLook.y);
     state.lookDX += (e.clientX - lastLook.x) * 2;
     state.lookDY += (e.clientY - lastLook.y) * 2;
     lastLook = { x: e.clientX, y: e.clientY };
   });
   const releaseLook = (e) => {
-    if (e.pointerId === lookPointer) lookPointer = null;
+    if (e.pointerId !== lookPointer) return;
+    if (touchDragDist < 12 && performance.now() - touchDownTime < 300) {
+      state.attackQueued = true;
+    }
+    lookPointer = null;
   };
   canvas.addEventListener('pointerup', releaseLook);
   canvas.addEventListener('pointercancel', releaseLook);
@@ -125,11 +153,13 @@ export function createControls(canvas) {
         lookDY: state.lookDY,
         zoomDelta: state.zoomDelta,
         jump: state.jumpQueued,
+        attack: state.attackQueued,
       };
       state.lookDX = 0;
       state.lookDY = 0;
       state.zoomDelta = 0;
       state.jumpQueued = false;
+      state.attackQueued = false;
       return out;
     },
   };
