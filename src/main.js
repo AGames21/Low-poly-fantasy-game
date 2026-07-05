@@ -61,6 +61,9 @@ onResize();
 const clock = new THREE.Clock();
 const tmpDir = new THREE.Vector3();
 
+// exposed for automated end-to-end tests
+window.__knight = { player, cam };
+
 function tick() {
   requestAnimationFrame(tick);
   const dt = Math.min(clock.getDelta(), 0.05);
@@ -81,8 +84,9 @@ function tick() {
   const moveLen = Math.hypot(input.move.x, input.move.y);
   if (moveLen > 0.05) {
     const forwardAngle = cam.yaw + Math.PI; // direction the camera faces
-    const dx = Math.sin(forwardAngle) * input.move.y + Math.sin(forwardAngle + Math.PI / 2) * input.move.x;
-    const dz = Math.cos(forwardAngle) * input.move.y + Math.cos(forwardAngle + Math.PI / 2) * input.move.x;
+    const rightAngle = forwardAngle - Math.PI / 2; // camera's screen-right
+    const dx = Math.sin(forwardAngle) * input.move.y + Math.sin(rightAngle) * input.move.x;
+    const dz = Math.cos(forwardAngle) * input.move.y + Math.cos(rightAngle) * input.move.x;
     tmpDir.set(dx, 0, dz).normalize();
     player.pos.x += tmpDir.x * WALK_SPEED * moveLen * dt;
     player.pos.z += tmpDir.z * WALK_SPEED * moveLen * dt;
