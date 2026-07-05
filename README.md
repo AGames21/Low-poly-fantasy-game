@@ -6,6 +6,15 @@ textures are generated procedurally in code, no asset files.
 
 ## Play it
 
+**No install:** the game builds to a single self-contained `dist/index.html`
+(`npm run build`) that runs anywhere — any static host, or even opened
+directly as a file. A GitHub Actions workflow (`.github/workflows/deploy.yml`)
+deploys it to GitHub Pages on every push; note GitHub Pages requires the
+repository to be public (or a paid GitHub plan). Once enabled it serves at
+`https://agames21.github.io/Low-poly-fantasy-game/`.
+
+**For development:**
+
 ```bash
 npm install
 npm run dev
