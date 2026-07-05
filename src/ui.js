@@ -4,16 +4,24 @@ import { HELMETS, ARMOR_MATERIALS, TINTS, WEAPONS, DEFAULT_CONFIG } from './knig
 const CONFIG_KEY = 'knightfall.config';
 const PLATFORM_KEY = 'knightfall.platform';
 
+// storage can be unavailable in sandboxed/embedded contexts — never crash
+function storageGet(key) {
+  try { return localStorage.getItem(key); } catch { return null; }
+}
+function storageSet(key, value) {
+  try { localStorage.setItem(key, value); } catch { /* not persisted */ }
+}
+
 export function loadConfig() {
   try {
-    const raw = localStorage.getItem(CONFIG_KEY);
+    const raw = storageGet(CONFIG_KEY);
     if (raw) return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
   } catch { /* corrupted storage — fall through to defaults */ }
   return { ...DEFAULT_CONFIG };
 }
 
 function saveConfig(config) {
-  localStorage.setItem(CONFIG_KEY, JSON.stringify(config));
+  storageSet(CONFIG_KEY, JSON.stringify(config));
 }
 
 export function createUI({ onStart, onConfigChange, onPlatformChange }) {
@@ -25,7 +33,7 @@ export function createUI({ onStart, onConfigChange, onPlatformChange }) {
   const hint = document.getElementById('controls-hint');
 
   let config = loadConfig();
-  let platform = localStorage.getItem(PLATFORM_KEY) || (isTouchDevice() ? 'mobile' : 'pc');
+  let platform = storageGet(PLATFORM_KEY) || (isTouchDevice() ? 'mobile' : 'pc');
 
   // ---------- launch screen ----------
   const pcBtn = document.getElementById('choose-pc');
@@ -34,7 +42,7 @@ export function createUI({ onStart, onConfigChange, onPlatformChange }) {
 
   function start(chosen) {
     platform = chosen;
-    localStorage.setItem(PLATFORM_KEY, chosen);
+    storageSet(PLATFORM_KEY, chosen);
     launch.style.display = 'none';
     hud.style.display = 'block';
     applyPlatform();
@@ -102,7 +110,7 @@ export function createUI({ onStart, onConfigChange, onPlatformChange }) {
     btn.textContent = label;
     btn.addEventListener('click', () => {
       platform = key;
-      localStorage.setItem(PLATFORM_KEY, key);
+      storageSet(PLATFORM_KEY, key);
       markSelected(platformRow, key);
       applyPlatform();
     });

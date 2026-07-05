@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createRetroRenderer, snapAll } from './retro.js';
 import { createSky } from './sky.js';
-import { createWorld, WORLD_BOUNDS } from './world.js';
+import { createWorld, WORLD_BOUNDS, heightAt } from './world.js';
 import { createKnight } from './knight.js';
 import { createControls } from './controls.js';
 import { createUI, loadConfig } from './ui.js';
@@ -100,16 +100,19 @@ function tick() {
     player.pos.z *= WORLD_BOUNDS / r;
   }
 
-  // jump / gravity
+  // jump / gravity, walking over the rolling terrain
+  const groundY = heightAt(player.pos.x, player.pos.z);
   if (input.jump && player.grounded) {
     player.vy = JUMP_VELOCITY;
     player.grounded = false;
   }
-  if (!player.grounded) {
+  if (player.grounded) {
+    player.pos.y = groundY;
+  } else {
     player.vy -= GRAVITY * dt;
     player.pos.y += player.vy * dt;
-    if (player.pos.y <= 0) {
-      player.pos.y = 0;
+    if (player.pos.y <= groundY) {
+      player.pos.y = groundY;
       player.vy = 0;
       player.grounded = true;
     }

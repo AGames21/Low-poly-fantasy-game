@@ -1,9 +1,9 @@
-// PS1-style rendering: the game renders at a tiny internal resolution and the
-// canvas is stretched fullscreen with image-rendering: pixelated (set in CSS).
-// Materials additionally get vertex snapping for the classic polygon jitter.
+// Retro console rendering: the game renders at a reduced internal resolution
+// and the canvas is stretched fullscreen with smooth (bilinear) scaling — the
+// soft GameCube-era look. Materials also get subtle vertex snapping.
 import * as THREE from 'three';
 
-export const INTERNAL_HEIGHT = 240;
+export const INTERNAL_HEIGHT = 432;
 
 export function createRetroRenderer(canvas) {
   const renderer = new THREE.WebGLRenderer({
@@ -26,8 +26,10 @@ export function createRetroRenderer(canvas) {
   return { renderer, resize };
 }
 
-// Quantizes clip-space vertex positions to a coarse grid → PS1 vertex wobble.
-const SNAP = new THREE.Vector2(160, 120);
+// Quantizes clip-space vertex positions to a grid → subtle retro vertex
+// wobble. Kept fine enough that meshes still read as smooth (GameCube-era),
+// not jittery PS1.
+const SNAP = new THREE.Vector2(480, 270);
 
 export function snapMaterial(material) {
   material.onBeforeCompile = (shader) => {

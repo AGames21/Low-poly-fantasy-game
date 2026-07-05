@@ -163,34 +163,61 @@ function buildModel(config) {
   const cloth = new THREE.MeshLambertMaterial({ map: getTex('cloth', () => clothTexture()) });
   const clothDark = new THREE.MeshLambertMaterial({ map: getTex('clothDark', () => clothTexture({ base: '#100c18', seed: 61 })) });
 
-  const box = (w, h, d, mat) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-  const cyl = (rt, rb, h, mat, seg = 6) => new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat);
+  // smooth-shaded building blocks — curved silhouettes, GameCube-style
+  const capsule = (r, len, mat) => new THREE.Mesh(new THREE.CapsuleGeometry(r, len, 4, 10), mat);
+  const ball = (r, mat, sx = 1, sy = 1, sz = 1) => {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 8), mat);
+    m.scale.set(sx, sy, sz);
+    return m;
+  };
+  const cyl = (rt, rb, h, mat, seg = 12) => new THREE.Mesh(new THREE.CylinderGeometry(rt, rb, h, seg), mat);
 
-  // ---- torso ----
+  // ---- torso: lathed breastplate, oval cross-section ----
   const torso = new THREE.Group();
   const torsoBaseY = 1.02;
   torso.position.y = torsoBaseY;
   model.add(torso);
 
-  const chest = box(0.62, 0.62, 0.4, armor);
-  chest.position.y = 0.42;
+  const profile = [
+    new THREE.Vector2(0.21, -0.12),  // waist
+    new THREE.Vector2(0.29, 0.10),
+    new THREE.Vector2(0.33, 0.34),   // chest
+    new THREE.Vector2(0.29, 0.56),
+    new THREE.Vector2(0.14, 0.70),   // collar
+  ];
+  const chest = new THREE.Mesh(new THREE.LatheGeometry(profile, 14), armor);
+  chest.scale.z = 0.78;
   torso.add(chest);
-  const belly = box(0.5, 0.26, 0.34, cloth);
-  belly.position.y = 0.05;
-  torso.add(belly);
-  const belt = box(0.54, 0.09, 0.38, clothDark);
-  belt.position.y = -0.08;
+
+  // belt: a flattened torus at the waist
+  const belt = new THREE.Mesh(new THREE.TorusGeometry(0.235, 0.045, 6, 14), clothDark);
+  belt.rotation.x = Math.PI / 2;
+  belt.scale.z = 0.85;
+  belt.position.y = -0.10;
   torso.add(belt);
-  // tabard skirt (tapered)
-  const skirt = cyl(0.32, 0.44, 0.5, cloth, 6);
-  skirt.position.y = -0.32;
+
+  // tabard skirt: smooth flared cone
+  const skirt = new THREE.Mesh(
+    new THREE.LatheGeometry([
+      new THREE.Vector2(0.23, 0),
+      new THREE.Vector2(0.34, -0.28),
+      new THREE.Vector2(0.43, -0.55),
+    ], 14),
+    cloth
+  );
+  skirt.scale.z = 0.88;
+  skirt.position.y = -0.10;
   torso.add(skirt);
 
-  // pauldrons
+  // pauldrons: big smooth domes over the shoulders
   for (const side of [-1, 1]) {
-    const pauldron = new THREE.Mesh(new THREE.SphereGeometry(0.21, 6, 4, 0, Math.PI * 2, 0, Math.PI / 2), armorFlat);
-    pauldron.position.set(side * 0.4, 0.68, 0);
-    pauldron.scale.set(1.15, 1, 1.1);
+    const pauldron = new THREE.Mesh(
+      new THREE.SphereGeometry(0.23, 12, 7, 0, Math.PI * 2, 0, Math.PI / 2),
+      armor
+    );
+    pauldron.position.set(side * 0.42, 0.60, 0);
+    pauldron.scale.set(1.2, 1.05, 1.05);
+    pauldron.rotation.z = side * -0.22;
     torso.add(pauldron);
   }
 
@@ -198,51 +225,50 @@ function buildModel(config) {
   const head = new THREE.Group();
   head.position.y = 0.78;
   torso.add(head);
-  const neck = cyl(0.1, 0.12, 0.12, clothDark, 6);
+  const neck = cyl(0.10, 0.12, 0.14, clothDark, 10);
   neck.position.y = 0.02;
   head.add(neck);
   head.add(buildHelmet(config.helmet, armor, armorFlat));
 
-  // ---- arms ----
+  // ---- arms: capsules with sphere gauntlets ----
   const makeArm = (side) => {
     const shoulder = new THREE.Group();
-    shoulder.position.set(side * 0.42, 0.62, 0);
+    shoulder.position.set(side * 0.42, 0.58, 0);
     torso.add(shoulder);
-    const upper = box(0.16, 0.4, 0.18, cloth);
-    upper.position.y = -0.22;
+    const upper = capsule(0.095, 0.24, cloth);
+    upper.position.y = -0.2;
     shoulder.add(upper);
     const elbow = new THREE.Group();
-    elbow.position.y = -0.44;
+    elbow.position.y = -0.42;
     shoulder.add(elbow);
-    const forearm = box(0.15, 0.34, 0.16, armor);
-    forearm.position.y = -0.18;
+    const forearm = capsule(0.09, 0.2, armor);
+    forearm.position.y = -0.16;
     elbow.add(forearm);
     const hand = new THREE.Group();
-    hand.position.y = -0.4;
+    hand.position.y = -0.38;
     elbow.add(hand);
-    const gauntlet = box(0.14, 0.14, 0.15, armorFlat);
-    hand.add(gauntlet);
+    hand.add(ball(0.105, armor, 1, 1.1, 1));
     return { shoulder, elbow, hand };
   };
   const armL = makeArm(-1);
   const armR = makeArm(1);
 
-  // ---- legs ----
+  // ---- legs: capsule thighs/shins, rounded sabatons ----
   const makeLeg = (side) => {
     const hip = new THREE.Group();
     hip.position.set(side * 0.17, 1.0, 0);
     model.add(hip);
-    const thigh = box(0.2, 0.42, 0.22, cloth);
-    thigh.position.y = -0.24;
+    const thigh = capsule(0.115, 0.26, cloth);
+    thigh.position.y = -0.22;
     hip.add(thigh);
     const knee = new THREE.Group();
     knee.position.y = -0.48;
     hip.add(knee);
-    const shin = box(0.17, 0.4, 0.19, armor);
-    shin.position.y = -0.22;
+    const shin = capsule(0.095, 0.24, armor);
+    shin.position.y = -0.19;
     knee.add(shin);
-    const boot = box(0.18, 0.12, 0.3, clothDark);
-    boot.position.set(0, -0.46, 0.05);
+    const boot = ball(0.115, clothDark, 1, 0.75, 1.7);
+    boot.position.set(0, -0.45, 0.06);
     knee.add(boot);
     return { hip, knee };
   };
@@ -274,11 +300,11 @@ function buildHelmet(style, armor, armorFlat) {
   dark.userData.noSnap = true;
 
   if (style === 'bucket') {
-    // rounded-top cylinder helm with dotted rivets + bar visor (images 1 & 5)
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.21, 0.34, 10), armor);
+    // rounded-top cylinder helm with bar visor (images 1 & 5)
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.21, 0.34, 14), armor);
     body.position.y = 0.22;
     helm.add(body);
-    const top = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2), armor);
+    const top = new THREE.Mesh(new THREE.SphereGeometry(0.2, 14, 7, 0, Math.PI * 2, 0, Math.PI / 2), armor);
     top.position.y = 0.39;
     helm.add(top);
     // eye slit
@@ -292,41 +318,42 @@ function buildHelmet(style, armor, armorFlat) {
       helm.add(bar);
     }
   } else if (style === 'pointed') {
-    // conical knight helm with spike (images 3 & 4)
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.2, 0.3, 8), armor);
+    // smooth conical knight helm with spike (images 3 & 4)
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.2, 0.3, 12), armor);
     body.position.y = 0.2;
     helm.add(body);
-    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.22, 8), armorFlat);
-    cone.position.y = 0.46;
+    const cone = new THREE.Mesh(new THREE.ConeGeometry(0.18, 0.24, 12), armor);
+    cone.position.y = 0.47;
     helm.add(cone);
-    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.035, 0.22, 5), armorFlat);
-    spike.position.y = 0.65;
+    const spike = new THREE.Mesh(new THREE.ConeGeometry(0.03, 0.2, 8), armor);
+    spike.position.y = 0.66;
     helm.add(spike);
     const visor = new THREE.Mesh(new THREE.BoxGeometry(0.28, 0.07, 0.06), dark);
     visor.position.set(0, 0.26, 0.17);
     helm.add(visor);
-    const noseBar = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.16, 0.05), armorFlat);
+    const noseBar = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 0.16, 8), armor);
     noseBar.position.set(0, 0.2, 0.185);
     helm.add(noseBar);
   } else {
-    // greathelm: flat-topped box helm with angry visor + bar grille (image 1)
-    const body = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.4, 0.34), armor);
+    // greathelm: cylindrical helm, gently domed crown, visor + grille (image 1)
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.195, 0.205, 0.4, 14), armor);
     body.position.y = 0.24;
     helm.add(body);
-    const brow = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.05, 0.36), armorFlat);
-    brow.position.y = 0.42;
-    helm.add(brow);
+    const crown = new THREE.Mesh(new THREE.SphereGeometry(0.195, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2), armor);
+    crown.position.y = 0.44;
+    crown.scale.y = 0.4;
+    helm.add(crown);
     // angled eye slits
     for (const side of [-1, 1]) {
       const eye = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.035, 0.04), dark);
-      eye.position.set(side * 0.08, 0.32, 0.165);
+      eye.position.set(side * 0.08, 0.32, 0.175);
       eye.rotation.z = side * -0.25;
       helm.add(eye);
     }
     // vertical grille bars
     for (let i = -2; i <= 2; i++) {
       const bar = new THREE.Mesh(new THREE.BoxGeometry(0.025, 0.14, 0.04), dark);
-      bar.position.set(i * 0.06, 0.15, 0.17);
+      bar.position.set(i * 0.06, 0.15, 0.18);
       helm.add(bar);
     }
   }
@@ -376,19 +403,23 @@ function buildSword(armorFlat, clothDark) {
 
 function buildShield(armorFlat) {
   const shield = new THREE.Group();
-  const face = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.62, 0.06), armorFlat);
+  // curved plate: an open cylinder arc, like a real heater shield face
+  const plateGeo = new THREE.CylinderGeometry(0.42, 0.42, 0.66, 10, 1, true, -0.55, 1.1);
+  const plateMat = armorFlat.clone();
+  plateMat.side = THREE.DoubleSide;
+  const face = new THREE.Mesh(plateGeo, plateMat);
+  face.rotation.y = Math.PI; // concave side toward the arm
   shield.add(face);
-  const point = new THREE.Mesh(new THREE.ConeGeometry(0.255, 0.3, 4), armorFlat);
+  const point = new THREE.Mesh(new THREE.ConeGeometry(0.2, 0.28, 10), armorFlat);
   point.rotation.x = Math.PI;
-  point.rotation.y = Math.PI / 4;
-  point.scale.z = 0.16;
-  point.position.y = -0.45;
+  point.scale.z = 0.35;
+  point.position.set(0, -0.45, -0.36);
   shield.add(point);
-  const boss = new THREE.Mesh(new THREE.SphereGeometry(0.08, 6, 4), armorFlat);
-  boss.position.z = 0.05;
+  const boss = new THREE.Mesh(new THREE.SphereGeometry(0.08, 10, 6), armorFlat);
+  boss.position.z = -0.44;
   shield.add(boss);
-  shield.position.set(-0.08, -0.05, 0.1);
-  shield.rotation.y = 0.25;
+  shield.position.set(-0.08, -0.05, 0.14);
+  shield.rotation.y = Math.PI + 0.25;
   return shield;
 }
 

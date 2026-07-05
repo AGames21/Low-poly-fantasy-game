@@ -8,6 +8,42 @@ import {
 export const WORLD_BOUNDS = 88;
 export const CASTLE_Z = -70;
 
+// ---- smooth rolling terrain -------------------------------------------------
+// Both the ground mesh and the player walk height sample this.
+function hash2(ix, iz) {
+  let h = (ix * 374761393 + iz * 668265263) | 0;
+  h = (h ^ (h >> 13)) | 0;
+  h = Math.imul(h, 1274126177);
+  return (((h ^ (h >> 16)) >>> 0) / 4294967296);
+}
+
+function smoothNoise(x, z) {
+  const ix = Math.floor(x), iz = Math.floor(z);
+  const fx = x - ix, fz = z - iz;
+  const ux = fx * fx * (3 - 2 * fx);
+  const uz = fz * fz * (3 - 2 * fz);
+  const a = hash2(ix, iz), b = hash2(ix + 1, iz);
+  const c = hash2(ix, iz + 1), d = hash2(ix + 1, iz + 1);
+  return a + (b - a) * ux + (c - a) * uz + (a - b - c + d) * ux * uz;
+}
+
+function smoothstep(edge0, edge1, x) {
+  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+export function heightAt(x, z) {
+  // gentle GameCube-style hills…
+  const h = (smoothNoise(x * 0.045, z * 0.045) * 0.7 + smoothNoise(x * 0.11, z * 0.11) * 0.3) * 3.4;
+  // …flattened along the path corridor, the castle footprint, and spawn
+  const pathMask = smoothstep(4.5, 20, Math.abs(x));
+  const castleDx = Math.max(0, Math.abs(x) - 26);
+  const castleDz = Math.max(0, Math.abs(z - CASTLE_Z) - 20);
+  const castleMask = smoothstep(0, 16, Math.hypot(castleDx, castleDz));
+  const spawnMask = smoothstep(6, 15, Math.hypot(x, z - 4));
+  return h * pathMask * castleMask * spawnMask;
+}
+
 export function createWorld(scene) {
   const group = new THREE.Group();
 
@@ -24,12 +60,18 @@ export function createWorld(scene) {
   fill.position.set(-30, 40, 60);
   scene.add(fill);
 
-  // --- ground ---
+  // --- ground: displaced plane with smooth normals (rolling hills) ---
+  const groundGeo = new THREE.PlaneGeometry(400, 400, 100, 100);
+  groundGeo.rotateX(-Math.PI / 2);
+  const pos = groundGeo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    pos.setY(i, heightAt(pos.getX(i), pos.getZ(i)));
+  }
+  groundGeo.computeVertexNormals();
   const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(400, 400, 24, 24),
+    groundGeo,
     new THREE.MeshLambertMaterial({ map: groundTexture() })
   );
-  ground.rotation.x = -Math.PI / 2;
   group.add(ground);
 
   // --- stone path to the castle (pink-lit slabs, image 3) ---
@@ -75,7 +117,7 @@ export function createWorld(scene) {
       x = (treeRng() - 0.5) * 160;
       z = 20 - treeRng() * 130;
     } while (Math.abs(x) < 6 && z > CASTLE_Z - 5); // keep the path clear
-    tree.position.set(x, 0, z);
+    tree.position.set(x, heightAt(x, z) - 0.05, z);
     tree.rotation.y = treeRng() * Math.PI * 2;
     const s = 0.8 + treeRng() * 0.9;
     tree.scale.set(s, s, s);
@@ -92,7 +134,7 @@ export function createWorld(scene) {
     const x = (ruinRng() - 0.5) * 130;
     const z = 15 - ruinRng() * 100;
     if (Math.abs(x) < 7) continue;
-    wall.position.set(x, h / 2, z);
+    wall.position.set(x, heightAt(x, z) + h / 2 - 0.15, z);
     wall.rotation.y = ruinRng() * Math.PI;
     wall.rotation.z = (ruinRng() - 0.5) * 0.08;
     group.add(wall);
@@ -103,7 +145,7 @@ export function createWorld(scene) {
     const x = (ruinRng() - 0.5) * 110;
     const z = 10 - ruinRng() * 90;
     if (Math.abs(x) < 7) continue;
-    pillar.position.set(x, h / 2, z);
+    pillar.position.set(x, heightAt(x, z) + h / 2 - 0.15, z);
     pillar.rotation.z = (ruinRng() - 0.5) * 0.15;
     group.add(pillar);
   }
@@ -124,11 +166,8 @@ function buildCastle() {
   const spireMat = new THREE.MeshLambertMaterial({ color: 0x14101f });
 
   const box = (w, h, d, mat = wallMat) => new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
-  const tower = (r, h, mat = wallMat) => new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.12, h, 8), mat);
-  const spire = (r, h) => {
-    const m = new THREE.Mesh(new THREE.ConeGeometry(r, h, 8), spireMat);
-    return m;
-  };
+  const tower = (r, h, mat = wallMat) => new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.12, h, 12), mat);
+  const spire = (r, h) => new THREE.Mesh(new THREE.ConeGeometry(r, h, 12), spireMat);
 
   // main keep
   const keep = box(18, 26, 14);
@@ -200,26 +239,29 @@ function buildCastle() {
 function buildTree(rng) {
   const tree = new THREE.Group();
   const barkMat = new THREE.MeshLambertMaterial({ color: 0x1a1016 });
-  const leafMat = new THREE.MeshLambertMaterial({ color: 0x6e1414, flatShading: true });
+  const leafMat = new THREE.MeshLambertMaterial({ color: 0x6e1414 });
 
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.38, 3.2, 5), barkMat);
+  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.4, 3.2, 7), barkMat);
   trunk.position.y = 1.6;
   tree.add(trunk);
 
+  // smooth blob canopy: overlapping squashed spheres (GC-style foliage)
   const clumps = 3 + Math.floor(rng() * 3);
   for (let i = 0; i < clumps; i++) {
     const r = 0.9 + rng() * 1.1;
-    const leaf = new THREE.Mesh(new THREE.IcosahedronGeometry(r, 0), leafMat);
+    const leaf = new THREE.Mesh(new THREE.SphereGeometry(r, 8, 6), leafMat);
     leaf.position.set(
-      (rng() - 0.5) * 2.2,
-      2.8 + rng() * 1.8,
-      (rng() - 0.5) * 2.2
+      (rng() - 0.5) * 2.0,
+      3.0 + rng() * 1.6,
+      (rng() - 0.5) * 2.0
     );
+    leaf.scale.set(1, 0.75 + rng() * 0.3, 1);
+    leaf.rotation.y = rng() * Math.PI;
     tree.add(leaf);
   }
   // a couple of bare branches
   for (let i = 0; i < 2; i++) {
-    const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.1, 1.6, 4), barkMat);
+    const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.09, 1.6, 5), barkMat);
     branch.position.set((rng() - 0.5) * 0.8, 2.4 + rng() * 0.8, (rng() - 0.5) * 0.8);
     branch.rotation.z = (rng() - 0.5) * 1.8;
     branch.rotation.x = (rng() - 0.5) * 1.2;

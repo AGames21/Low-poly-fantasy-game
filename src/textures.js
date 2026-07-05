@@ -1,5 +1,6 @@
 // Procedural canvas textures — everything is generated, no image assets.
-// All textures use NearestFilter for the chunky PS1 look.
+// Low-res canvases stretched with bilinear filtering give the soft,
+// slightly blurry GameCube/N64 texture look.
 import * as THREE from 'three';
 
 function makeCanvas(size) {
@@ -11,9 +12,9 @@ function makeCanvas(size) {
 
 function toTexture(canvas, repeat = 1) {
   const tex = new THREE.CanvasTexture(canvas);
-  tex.magFilter = THREE.NearestFilter;
-  tex.minFilter = THREE.NearestFilter;
-  tex.generateMipmaps = false;
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.generateMipmaps = true;
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(repeat, repeat);
@@ -65,15 +66,26 @@ export function stoneTexture({ base = '#4a4658', mortar = '#2a2736', size = 128,
   return toTexture(canvas);
 }
 
-// Night grass / dirt ground.
+// Night grass / dirt ground — soft mottled blobs, not hard speckles.
 export function groundTexture({ size = 128, seed = 11 } = {}) {
   const rng = mulberry32(seed);
   const canvas = makeCanvas(size);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#17251a';
   ctx.fillRect(0, 0, size, size);
-  speckle(ctx, size, rng, 900, ['#1e3323', '#0f1a12', '#24402a', '#131f24', '#2a1d2e'], 2.6);
-  speckle(ctx, size, rng, 90, ['#37543a', '#3b3050'], 1.6);
+  const blobColors = ['30,51,35', '15,26,18', '36,64,42', '19,31,36', '42,29,46'];
+  for (let i = 0; i < 140; i++) {
+    const x = rng() * size, y = rng() * size;
+    const r = 4 + rng() * 14;
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    const c = blobColors[Math.floor(rng() * blobColors.length)];
+    g.addColorStop(0, `rgba(${c},${0.35 + rng() * 0.3})`);
+    g.addColorStop(1, `rgba(${c},0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  speckle(ctx, size, rng, 260, ['#243a28', '#101c14', '#2e2438'], 2.2);
+  speckle(ctx, size, rng, 50, ['#37543a', '#3b3050'], 1.4);
   return toTexture(canvas, 24);
 }
 
